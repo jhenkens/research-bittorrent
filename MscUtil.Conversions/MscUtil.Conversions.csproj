@@ -2,7 +2,4 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\MscUtil.Conversions\MscUtil.Conversions.csproj" />
-  </ItemGroup>
 </Project>

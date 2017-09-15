@@ -1,30 +1,35 @@
 ﻿using System;
 using System.IO;
-using Mono.Unix;
-using Mono.Unix.Native;
+using System.Threading;
 using BitTorrent;
 
 namespace Program
 {
-    public class Program
+    public static class Program
     {
-        public static Client Client;
+        private static Client client;
+        private static ManualResetEventSlim manualResetEventSlim = new ManualResetEventSlim();
 
         public static void Main(string[] args)
         {
-            int port = -1;
-
-            if (args.Length != 3 || !Int32.TryParse(args[0], out port) || !File.Exists(args[1]))
+            if (args.Length != 3 || !int.TryParse(args[0], out var port) || !File.Exists(args[1]))
             {
                 Console.WriteLine("Error: requires port, torrent file and download directory as first, second and third arguments");
                 return;
             }
 
-            Client = new Client(port, args[1], args[2]);
-            Client.Start();
+            client = new Client(port, args[1], args[2]);
+            client.Start();
 
-            new UnixSignal(Signum.SIGINT).WaitOne();
-            Client.Stop();
+            Console.CancelKeyPress += (x, y) => client.Stop();
+
+            manualResetEventSlim.Wait();
+        }
+
+        private static void Stop()
+        {
+            client.Stop();
+            manualResetEventSlim.Set();
         }
     }
 }

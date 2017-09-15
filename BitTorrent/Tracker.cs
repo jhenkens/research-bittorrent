@@ -1,9 +1,7 @@
 ﻿using System;
-using System.Linq;
 using System.Net;
 using System.IO;
 using System.Collections.Generic;
-using System.Threading;
 using MiscUtil.Conversion;
 
 namespace BitTorrent
