@@ -5,6 +5,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Linq;
 using System.Threading;
+using BitTorrent.DownloadProviders.Peers;
+using BitTorrent.PeerDiscovery;
 
 namespace BitTorrent
 {
@@ -38,8 +40,8 @@ namespace BitTorrent
         private int isProcessUploads = 0;
         private int isProcessDownloads = 0;
 
-        private ConcurrentQueue<DataRequest> OutgoingBlocks = new ConcurrentQueue<DataRequest>();
-        private ConcurrentQueue<DataPackage> IncomingBlocks = new ConcurrentQueue<DataPackage>();
+        private ConcurrentQueue<PeerConnection.DataRequest> OutgoingBlocks = new ConcurrentQueue<PeerConnection.DataRequest>();
+        private ConcurrentQueue<PeerConnection.DataPackage> IncomingBlocks = new ConcurrentQueue<PeerConnection.DataPackage>();
 
         private Throttle uploadThrottle = new Throttle(maxUploadBytesPerSecond, TimeSpan.FromSeconds(1));
         private Throttle downloadThrottle = new Throttle(maxDownloadBytesPerSecond, TimeSpan.FromSeconds(1));
@@ -50,7 +52,7 @@ namespace BitTorrent
         {
             // generate random numerical id
             Id = "";
-            for (int i = 0; i < 20; i++)
+            for (var i = 0; i < 20; i++)
                 Id += (random.Next(0, 10));
 
             Port = port;
@@ -144,7 +146,7 @@ namespace BitTorrent
 
         private void HandlePeerListUpdated(object sender, List<IPEndPoint> endPoints)
         {
-            IPAddress local = LocalIPAddress;
+            var local = LocalIPAddress;
 
             foreach(var endPoint in endPoints)
             {
@@ -172,7 +174,7 @@ namespace BitTorrent
             if (listener == null)
                 return;
 
-            TcpClient client = listener.EndAcceptTcpClient(ar);
+            var client = listener.EndAcceptTcpClient(ar);
             listener.BeginAcceptTcpClient(new AsyncCallback(HandleNewConnection), null);
 
             AddPeer(new Peer(Torrent, Id, client));
@@ -197,15 +199,22 @@ namespace BitTorrent
             peer.Disconnected += HandlePeerDisconnected;
             peer.StateChanged += HandlePeerStateChanged;
 
-            peer.Connect();
+            if (!peer.TryConnect())
+            {
+                return;
+            }
 
             if (!Peers.TryAdd(peer.Key, peer))
+            {
                 peer.Disconnect();
+                return;
+            }
+            peer.Start();
         }
 
         private void HandlePeerDisconnected(object sender, EventArgs args)
         {            
-            Peer peer = sender as Peer;
+            var peer = sender as Peer;
 
             peer.BlockRequested -= HandleBlockRequested;
             peer.BlockCancelled -= HandleBlockCancelled;
@@ -289,14 +298,14 @@ namespace BitTorrent
 
         #region Uploads
 
-        private void HandleBlockRequested(object sender, DataRequest block)
+        private void HandleBlockRequested(object sender, PeerConnection.DataRequest block)
         {
             OutgoingBlocks.Enqueue(block);
 
             ProcessUploads();
         }
 
-        private void HandleBlockCancelled(object sender, DataRequest block)
+        private void HandleBlockCancelled(object sender, PeerConnection.DataRequest block)
         {
             foreach (var item in OutgoingBlocks)
             {
@@ -314,7 +323,7 @@ namespace BitTorrent
             if (Interlocked.Exchange(ref isProcessUploads, 1) == 1)
                 return;
 
-            DataRequest block;
+            PeerConnection.DataRequest block;
             while (!uploadThrottle.IsThrottled && OutgoingBlocks.TryDequeue(out block))
             {
                 if (block.IsCancelled)
@@ -323,7 +332,7 @@ namespace BitTorrent
                 if (!Torrent.IsPieceVerified[block.Piece])
                     continue;            
 
-                byte[] data = Torrent.ReadBlock(block.Piece, block.Begin, block.Length);
+                var data = Torrent.ReadBlock(block.Piece, block.Begin, block.Length);
                 if (data == null)
                     continue;
 
@@ -339,7 +348,7 @@ namespace BitTorrent
 
         #region Downloads
 
-        private void HandleBlockReceived(object sender, DataPackage args)
+        private void HandleBlockReceived(object sender, PeerConnection.DataPackage args)
         {
             IncomingBlocks.Enqueue(args);
 
@@ -362,7 +371,7 @@ namespace BitTorrent
             if (Interlocked.Exchange(ref isProcessDownloads, 1) == 1)
                 return;
 
-            DataPackage incomingBlock;
+            PeerConnection.DataPackage incomingBlock;
             while (IncomingBlocks.TryDequeue(out incomingBlock))
                 Torrent.WriteBlock(incomingBlock.Piece, incomingBlock.Block, incomingBlock.Data);
 
@@ -372,7 +381,7 @@ namespace BitTorrent
                 return;
             }
 
-            int[] ranked = GetRankedPieces();
+            var ranked = GetRankedPieces();
 
             foreach (var piece in ranked)
             {
@@ -385,7 +394,7 @@ namespace BitTorrent
                         continue;
 
                     // just request blocks in order
-                    for (int block = 0; block < Torrent.GetBlockCount(piece); block++)
+                    for (var block = 0; block < Torrent.GetBlockCount(piece); block++)
                     {                        
                         if (downloadThrottle.IsThrottled)
                             continue;
@@ -401,7 +410,7 @@ namespace BitTorrent
                         if (Peers.Count(x => x.Value.IsBlockRequested[piece][block]) > 0)
                             continue;
 
-                        int size = Torrent.GetBlockSize(piece, block);
+                        var size = Torrent.GetBlockSize(piece, block);
                         peer.SendRequest(piece, block * Torrent.BlockSize, size);
                         downloadThrottle.Add(size);
                         peer.IsBlockRequested[piece][block] = true;
@@ -429,13 +438,13 @@ namespace BitTorrent
 
         private double GetPieceScore(int piece)
         {
-            double progress = GetPieceProgress(piece);
-            double rarity = GetPieceRarity(piece);
+            var progress = GetPieceProgress(piece);
+            var rarity = GetPieceRarity(piece);
 
             if( progress == 1.0 )
                 progress = 0;
 
-            double rand = random.Next(0,100) / 1000.0;
+            var rand = random.Next(0,100) / 1000.0;
 
             return progress + rarity + rand;
         }

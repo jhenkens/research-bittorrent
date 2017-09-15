@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using BitTorrent.PeerDiscovery;
 
 namespace BitTorrent
 {
@@ -68,7 +69,7 @@ namespace BitTorrent
         public long Left { get { return TotalSize - Downloaded; } }
 
         public byte[] Infohash { get; private set; } = new byte[20];
-        public string HexStringInfohash { get { return String.Join("", this.Infohash.Select(x => x.ToString("x2"))); } }
+        public string HexStringInfohash { get { return Utilities.InfoHashAsHexString(this.Infohash); } }
         public string UrlSafeStringInfohash { get { return Encoding.UTF8.GetString(WebUtility.UrlEncodeToBytes(this.Infohash, 0, 20)); } }
 
         #endregion
@@ -88,14 +89,14 @@ namespace BitTorrent
             DownloadDirectory = location;
             Files = files;
             fileWriteLocks = new object[Files.Count];
-            for (int i = 0; i < this.Files.Count; i++)
+            for (var i = 0; i < this.Files.Count; i++)
                 fileWriteLocks[i] = new object();   
 
             if (trackers != null)
             {
-                foreach (string url in trackers)
+                foreach (var url in trackers)
                 {
-                    Tracker tracker = new Tracker(url);
+                    var tracker = new Tracker(url);
                     Trackers.Add(tracker);
                     tracker.PeerListUpdated += HandlePeerListUpdated;
                 }
@@ -105,35 +106,35 @@ namespace BitTorrent
             BlockSize = blockSize;
             IsPrivate = isPrivate;
 
-            int count = Convert.ToInt32(Math.Ceiling(TotalSize / Convert.ToDouble(PieceSize)));
+            var count = Convert.ToInt32(Math.Ceiling(TotalSize / Convert.ToDouble(PieceSize)));
 
             PieceHashes = new byte[count][];
             IsPieceVerified = new bool[count];
             IsBlockAcquired = new bool[count][];
 
-            for (int i = 0; i < PieceCount; i++)
+            for (var i = 0; i < PieceCount; i++)
                 IsBlockAcquired[i] = new bool[GetBlockCount(i)];            
 
             if (pieceHashes == null)
             {
                 // this is a new torrent so we have to create the hashes from the files                 
-                for (int i = 0; i < PieceCount; i++)
+                for (var i = 0; i < PieceCount; i++)
                     PieceHashes[i] = GetHash(i);
             }
             else
             {
-                for (int i = 0; i < PieceCount; i++)
+                for (var i = 0; i < PieceCount; i++)
                 {
                     PieceHashes[i] = new byte[20];
                     Buffer.BlockCopy(pieceHashes, i * 20, PieceHashes[i], 0, 20);
                 }
             }
 
-            object info = TorrentInfoToBEncodingObject(this);
-            byte[] bytes =  BEncoding.Encode(info);
+            var info = TorrentInfoToBEncodingObject(this);
+            var bytes =  BEncoding.Encode(info);
             Infohash = SHA1.Create().ComputeHash(bytes);
 
-            for (int i = 0; i < PieceCount; i++)
+            for (var i = 0; i < PieceCount; i++)
                 Verify(i);
         }
 
@@ -143,14 +144,14 @@ namespace BitTorrent
 
         public static Torrent Create(string path, List<string> trackers = null, int pieceSize = 32768, string comment = "")
         {
-            string name = "";
-            List<FileItem> files = new List<FileItem>();
+            var name = "";
+            var files = new List<FileItem>();
 
             if (File.Exists(path))
             {
                 name = Path.GetFileName(path);
 
-                long size = new FileInfo(path).Length;
+                var size = new FileInfo(path).Length;
                 files.Add(new FileItem()
                     {
                         Path = Path.GetFileName(path),
@@ -160,17 +161,17 @@ namespace BitTorrent
             else
             {
                 name = path;
-                string directory = path + Path.DirectorySeparatorChar;
+                var directory = path + Path.DirectorySeparatorChar;
 
                 long running = 0;
-                foreach (string file in Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories))
+                foreach (var file in Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories))
                 {
-                    string f = file.Substring(directory.Length);
+                    var f = file.Substring(directory.Length);
 
                     if (f.StartsWith("."))
                         continue;
 
-                    long size = new FileInfo(file).Length;
+                    var size = new FileInfo(file).Length;
 
                     files.Add(new FileItem()
                         {
@@ -183,11 +184,13 @@ namespace BitTorrent
                 }
             }
 
-            Torrent torrent = new Torrent(name, "", files, trackers, pieceSize);
-            torrent.Comment = comment;
-            torrent.CreatedBy = "TestClient";
-            torrent.CreationDate = DateTime.Now;
-            torrent.Encoding = Encoding.UTF8;
+            var torrent = new Torrent(name, "", files, trackers, pieceSize)
+            {
+                Comment = comment,
+                CreatedBy = "TestClient",
+                CreationDate = DateTime.Now,
+                Encoding = Encoding.UTF8
+            };
 
             return torrent;
         }
@@ -211,8 +214,7 @@ namespace BitTorrent
         private void HandlePeerListUpdated(object sender, List<IPEndPoint> endPoints)
         {
             var handler = PeerListUpdated;
-            if (handler != null)
-                handler(sender, endPoints);
+            handler?.Invoke(sender, endPoints);
         }
 
         #endregion
@@ -221,15 +223,15 @@ namespace BitTorrent
 
         public void Verify(int piece)
         {
-            byte[] hash = GetHash(piece);
+            var hash = GetHash(piece);
 
-            bool isVerified = (hash != null && hash.SequenceEqual(PieceHashes[piece]));
+            var isVerified = (hash != null && hash.SequenceEqual(PieceHashes[piece]));
 
             if (isVerified)
             {                
                 IsPieceVerified[piece] = true;
 
-                for (int j = 0; j < IsBlockAcquired[piece].Length; j++)
+                for (var j = 0; j < IsBlockAcquired[piece].Length; j++)
                     IsBlockAcquired[piece][j] = true;
 
                 var handler = PieceVerified;
@@ -244,14 +246,14 @@ namespace BitTorrent
             // reload the entire piece
             if (IsBlockAcquired[piece].All(x => x))
             {
-                for (int j = 0; j < IsBlockAcquired[piece].Length; j++)
+                for (var j = 0; j < IsBlockAcquired[piece].Length; j++)
                     IsBlockAcquired[piece][j] = false;
             }
         }
 
         public byte[] GetHash(int piece)
         {
-            byte[] data = ReadPiece(piece);
+            var data = ReadPiece(piece);
 
             if (data == null)
                 return null;            
@@ -275,24 +277,24 @@ namespace BitTorrent
 
         public byte[] Read(long start, int length)
         {
-            long end = start + length;
-            byte[] buffer = new byte[length];
+            var end = start + length;
+            var buffer = new byte[length];
 
-            for (int i=0; i<Files.Count; i++)
+            for (var i=0; i<Files.Count; i++)
             {                
                 if ((start < Files[i].Offset && end < Files[i].Offset) ||
                     (start > Files[i].Offset + Files[i].Size && end > Files[i].Offset + Files[i].Size))
                     continue;
 
-                string filePath = DownloadDirectory + Path.DirectorySeparatorChar + FileDirectory + Files[i].Path;
+                var filePath = DownloadDirectory + Path.DirectorySeparatorChar + FileDirectory + Files[i].Path;
 
                 if (!File.Exists(filePath))
                     return null;
 
-                long fstart = Math.Max(0, start - Files[i].Offset);
-                long fend = Math.Min(end - Files[i].Offset, Files[i].Size);
-                int flength = Convert.ToInt32(fend - fstart);
-                int bstart = Math.Max(0, Convert.ToInt32(Files[i].Offset - start));
+                var fstart = Math.Max(0, start - Files[i].Offset);
+                var fend = Math.Min(end - Files[i].Offset, Files[i].Size);
+                var flength = Convert.ToInt32(fend - fstart);
+                var bstart = Math.Max(0, Convert.ToInt32(Files[i].Offset - start));
 
                 using (Stream stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {                    
@@ -313,17 +315,17 @@ namespace BitTorrent
 
         public void Write(long start, byte[] bytes)
         {
-            long end = start + bytes.Length;
+            var end = start + bytes.Length;
 
-            for (int i = 0; i < Files.Count; i++)
+            for (var i = 0; i < Files.Count; i++)
             {                
                 if ((start < Files[i].Offset && end < Files[i].Offset) ||
                     (start > Files[i].Offset + Files[i].Size && end > Files[i].Offset + Files[i].Size))
                     continue;
 
-                string filePath = DownloadDirectory + Path.DirectorySeparatorChar + FileDirectory + Files[i].Path;
+                var filePath = DownloadDirectory + Path.DirectorySeparatorChar + FileDirectory + Files[i].Path;
 
-                string dir = Path.GetDirectoryName(filePath);
+                var dir = Path.GetDirectoryName(filePath);
                 if (!Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
 
@@ -331,10 +333,10 @@ namespace BitTorrent
                 {
                     using (Stream stream = new FileStream(filePath, FileMode.OpenOrCreate, FileAccess.ReadWrite))
                     {
-                        long fstart = Math.Max(0, start - Files[i].Offset);
-                        long fend = Math.Min(end - Files[i].Offset, Files[i].Size);
-                        int flength = Convert.ToInt32(fend - fstart);
-                        int bstart = Math.Max(0, Convert.ToInt32(Files[i].Offset - start));
+                        var fstart = Math.Max(0, start - Files[i].Offset);
+                        var fend = Math.Min(end - Files[i].Offset, Files[i].Size);
+                        var flength = Convert.ToInt32(fend - fstart);
+                        var bstart = Math.Max(0, Convert.ToInt32(Files[i].Offset - start));
 
                         stream.Seek(fstart, SeekOrigin.Begin);
                         stream.Write(bytes, bstart, flength);
@@ -349,15 +351,15 @@ namespace BitTorrent
 
         public static Torrent LoadFromFile(string filePath, string downloadPath)
         {
-            object obj = BEncoding.DecodeFile(filePath);
-            string name = Path.GetFileNameWithoutExtension(filePath);
+            var obj = BEncoding.DecodeFile(filePath);
+            var name = Path.GetFileNameWithoutExtension(filePath);
 
             return BEncodingObjectToTorrent(obj, name, downloadPath);
         }
 
         public static void SaveToFile(Torrent torrent)
         {
-            object obj = TorrentToBEncodingObject(torrent);
+            var obj = TorrentToBEncodingObject(torrent);
 
             BEncoding.EncodeToFile(obj, torrent.Name + ".torrent");
         }
@@ -368,7 +370,7 @@ namespace BitTorrent
 
         private static object TorrentToBEncodingObject(Torrent torrent)
         {
-            Dictionary<string,object> dict = new Dictionary<string, object>();
+            var dict = new Dictionary<string, object>();
 
             if( torrent.Trackers.Count == 1 )
                 dict["announce"] = Encoding.UTF8.GetBytes(torrent.Trackers[0].Address);
@@ -385,11 +387,11 @@ namespace BitTorrent
 
         private static object TorrentInfoToBEncodingObject(Torrent torrent)
         {
-            Dictionary<string,object> dict = new Dictionary<string, object>();
+            var dict = new Dictionary<string, object>();
 
             dict["piece length"] = (long)torrent.PieceSize;
-            byte[] pieces = new byte[20 * torrent.PieceCount];
-            for (int i = 0; i < torrent.PieceCount; i++)
+            var pieces = new byte[20 * torrent.PieceCount];
+            for (var i = 0; i < torrent.PieceCount; i++)
                 Buffer.BlockCopy(torrent.PieceHashes[i], 0, pieces, i * 20, 20);
             dict["pieces"] = pieces;
 
@@ -403,11 +405,11 @@ namespace BitTorrent
             }
             else
             {
-                List<object> files = new List<object>();
+                var files = new List<object>();
 
                 foreach (var f in torrent.Files)
                 {
-                    Dictionary<string,object> fileDict = new Dictionary<string, object>();
+                    var fileDict = new Dictionary<string, object>();
                     fileDict["path"] = f.Path.Split(Path.DirectorySeparatorChar).Select(x => (object)Encoding.UTF8.GetBytes(x)).ToList();
                     fileDict["length"] = f.Size;
                     files.Add(fileDict);
@@ -422,25 +424,25 @@ namespace BitTorrent
 
         private static Torrent BEncodingObjectToTorrent(object bencoding, string name, string downloadPath)
         {
-            Dictionary<string,object> obj = (Dictionary<string,object>)bencoding;
+            var obj = (Dictionary<string,object>)bencoding;
 
             if (obj == null)
                 throw new Exception("not a torrent file");
             
             // !! handle list
-            List<string> trackers = new List<string>();
+            var trackers = new List<string>();
             if (obj.ContainsKey("announce"))                
                 trackers.Add(DecodeUTF8String(obj["announce"]));            
 
             if (!obj.ContainsKey("info"))
                 throw new Exception("Missing info section");
 
-            Dictionary<string,object> info = (Dictionary<string,object>)obj["info"];
+            var info = (Dictionary<string,object>)obj["info"];
 
             if (info == null)
                 throw new Exception("error");
 
-            List<FileItem> files = new List<FileItem>();
+            var files = new List<FileItem>();
 
             if (info.ContainsKey("name") && info.ContainsKey("length"))
             {
@@ -453,16 +455,16 @@ namespace BitTorrent
             {
                 long running = 0;
 
-                foreach (object item in (List<object>)info["files"])
+                foreach (var item in (List<object>)info["files"])
                 {
                     var dict = item as Dictionary<string,object>;
 
                     if (dict == null || !dict.ContainsKey("path") || !dict.ContainsKey("length") )
                         throw new Exception("error: incorrect file specification");
 
-                    string path = String.Join(Path.DirectorySeparatorChar.ToString(), ((List<object>)dict["path"]).Select(x => DecodeUTF8String(x)));
+                    var path = String.Join(Path.DirectorySeparatorChar.ToString(), ((List<object>)dict["path"]).Select(x => DecodeUTF8String(x)));
 
-                    long size = (long)dict["length"];
+                    var size = (long)dict["length"];
 
                     files.Add(new FileItem() {
                         Path = path,
@@ -480,17 +482,17 @@ namespace BitTorrent
                 
             if (!info.ContainsKey("piece length"))
                 throw new Exception("error");
-            int pieceSize = Convert.ToInt32(info["piece length"]);
+            var pieceSize = Convert.ToInt32(info["piece length"]);
 
             if (!info.ContainsKey("pieces"))
                 throw new Exception("error");            
-            byte[] pieceHashes = (byte[])info["pieces"];
+            var pieceHashes = (byte[])info["pieces"];
 
             bool? isPrivate = null;
             if (info.ContainsKey("private"))
                 isPrivate = ((long)info["private"]) == 1L;            
             
-            Torrent torrent = new Torrent(name, downloadPath, files, trackers, pieceSize, pieceHashes, 16384, isPrivate );
+            var torrent = new Torrent(name, downloadPath, files, trackers, pieceSize, pieceHashes, 16384, isPrivate );
 
             if (obj.ContainsKey("comment"))
                 torrent.Comment = DecodeUTF8String(obj["comment"]);
@@ -515,7 +517,7 @@ namespace BitTorrent
         {            
             if (piece == PieceCount - 1)
             { 
-                int remainder = Convert.ToInt32(TotalSize % PieceSize);
+                var remainder = Convert.ToInt32(TotalSize % PieceSize);
                 if (remainder != 0)
                     return remainder;
             }
@@ -527,7 +529,7 @@ namespace BitTorrent
         {
             if (block == GetBlockCount(piece) - 1)
             {
-                int remainder = Convert.ToInt32(GetPieceSize(piece) % BlockSize);
+                var remainder = Convert.ToInt32(GetPieceSize(piece) % BlockSize);
                 if (remainder != 0)
                     return remainder;
             }
@@ -546,7 +548,7 @@ namespace BitTorrent
 
         public static string DecodeUTF8String( object obj )
         {
-            byte[] bytes = obj as byte[];
+            var bytes = obj as byte[];
 
             if (bytes == null)
                 throw new Exception("unable to decode utf-8 string, object is not a byte array");
@@ -557,7 +559,7 @@ namespace BitTorrent
         public static DateTime UnixTimeStampToDateTime( double unixTimeStamp )
         {
             // Unix timestamp is seconds past epoch
-            System.DateTime dtDateTime = new DateTime(1970,1,1,0,0,0,0,System.DateTimeKind.Utc);
+            var dtDateTime = new DateTime(1970,1,1,0,0,0,0,System.DateTimeKind.Utc);
             dtDateTime = dtDateTime.AddSeconds( unixTimeStamp ).ToLocalTime();
             return dtDateTime;
         }
@@ -573,8 +575,8 @@ namespace BitTorrent
             string[] units = { "B", "KB", "MB", "GB", "TB", "PB", "EB" };
             if (bytes == 0)
                 return "0" + units[0];
-            int place = Convert.ToInt32(Math.Floor(Math.Log(bytes, 1024)));
-            double num = Math.Round(bytes / Math.Pow(1024, place), 1);
+            var place = Convert.ToInt32(Math.Floor(Math.Log(bytes, 1024)));
+            var num = Math.Round(bytes / Math.Pow(1024, place), 1);
             return num + units[place];
         }
 
@@ -585,7 +587,7 @@ namespace BitTorrent
 
         public string ToDetailedString()
         {
-            StringBuilder sb = new StringBuilder();
+            var sb = new StringBuilder();
             sb.AppendLine("Torrent: ".PadRight(15) + Name);
             sb.AppendLine("Size: ".PadRight(15) + FormattedTotalSize);
             sb.AppendLine("Pieces: ".PadRight(15) + PieceCount + "x" + FormattedPieceSize);
@@ -599,7 +601,7 @@ namespace BitTorrent
             else
             {
                 sb.Append("Files: ".PadRight(15) + Files.Count);
-                for (int i = 0; i < Files.Count; i++)
+                for (var i = 0; i < Files.Count; i++)
                     sb.Append("\n" + ("- " + (i + 1) + ":").PadRight(15) + FileDirectory + Files[i].Path + " (" + Files[i].FormattedSize + ")");
             }
 

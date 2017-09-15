@@ -20,7 +20,7 @@ namespace BitTorrent
 
         public static object Decode(byte[] bytes)
         {
-            IEnumerator<byte> enumerator = ((IEnumerable<byte>)bytes).GetEnumerator();
+            var enumerator = ((IEnumerable<byte>)bytes).GetEnumerator();
             enumerator.MoveNext();
 
             return DecodeNextObject(enumerator);
@@ -28,29 +28,30 @@ namespace BitTorrent
 
         public static object DecodeFile(string path)
         {
-            byte[] bytes = File.ReadAllBytes(path);
+            var bytes = File.ReadAllBytes(path);
 
-            return BEncoding.Decode(bytes);
+            return Decode(bytes);
         }
 
         private static object DecodeNextObject(IEnumerator<byte> enumerator)
         {
-            if (enumerator.Current == DictionaryStart)
-                return DecodeDictionary(enumerator);            
-
-            if (enumerator.Current == ListStart)
-                return DecodeList(enumerator);            
-
-            if (enumerator.Current == NumberStart)                       
-                return DecodeNumber(enumerator);
+            switch (enumerator.Current)
+            {
+                case DictionaryStart:
+                    return DecodeDictionary(enumerator);
+                case ListStart:
+                    return DecodeList(enumerator);
+                case NumberStart:
+                    return DecodeNumber(enumerator);
+            }
 
             return DecodeByteArray(enumerator);
         }
             
         private static Dictionary<string,object> DecodeDictionary(IEnumerator<byte> enumerator)
         {            
-            Dictionary<string,object> dict = new Dictionary<string,object>();
-            List<string> keys = new List<string>();
+            var dict = new Dictionary<string,object>();
+            var keys = new List<string>();
 
             // keep decoding objects until we hit the end flag
             while (enumerator.MoveNext())
@@ -59,9 +60,9 @@ namespace BitTorrent
                     break;
 
                 // all keys are valid UTF8 strings
-                string key = Encoding.UTF8.GetString(DecodeByteArray(enumerator));
+                var key = Encoding.UTF8.GetString(DecodeByteArray(enumerator));
                 enumerator.MoveNext();
-                object val = DecodeNextObject(enumerator);
+                var val = DecodeNextObject(enumerator);
 
                 keys.Add(key);
                 dict.Add(key, val);
@@ -78,7 +79,7 @@ namespace BitTorrent
 
         private static List<object> DecodeList(IEnumerator<byte> enumerator)
         {
-            List<object> list = new List<object>();
+            var list = new List<object>();
 
             // keep decoding objects until we hit the end flag
             while (enumerator.MoveNext())
@@ -94,7 +95,7 @@ namespace BitTorrent
 
         private static byte[] DecodeByteArray(IEnumerator<byte> enumerator)
         {
-            List<byte> lengthBytes = new List<byte>();
+            var lengthBytes = new List<byte>();
 
             // scan until we get to divider
             do
@@ -106,16 +107,15 @@ namespace BitTorrent
             }
             while (enumerator.MoveNext());
 
-            string lengthString = System.Text.Encoding.UTF8.GetString(lengthBytes.ToArray());
+            var lengthString = Encoding.UTF8.GetString(lengthBytes.ToArray());
 
-            int length;
-            if (!Int32.TryParse(lengthString, out length))
+            if (!int.TryParse(lengthString, out var length))
                 throw new Exception("unable to parse length of byte array");
 
             // now read in the actual byte array
-            byte[] bytes = new byte[length];
+            var bytes = new byte[length];
 
-            for (int i = 0; i < length; i++)
+            for (var i = 0; i < length; i++)
             {
                 enumerator.MoveNext();
                 bytes[i] = enumerator.Current;
@@ -126,7 +126,7 @@ namespace BitTorrent
 
         private static long DecodeNumber(IEnumerator<byte> enumerator)
         {
-            List<byte> bytes = new List<byte>();
+            var bytes = new List<byte>();
 
             // keep pulling bytes until we hit the end flag
             while (enumerator.MoveNext())
@@ -137,9 +137,9 @@ namespace BitTorrent
                 bytes.Add(enumerator.Current);
             }
 
-            string numAsString = Encoding.UTF8.GetString(bytes.ToArray());
+            var numAsString = Encoding.UTF8.GetString(bytes.ToArray());
 
-            return Int64.Parse(numAsString);
+            return long.Parse(numAsString);
         }
 
         #endregion
@@ -148,7 +148,7 @@ namespace BitTorrent
 
         public static byte[] Encode(object obj)
         {
-            MemoryStream buffer = new MemoryStream();
+            var buffer = new MemoryStream();
 
             EncodeNextObject(buffer, obj);
 
@@ -162,18 +162,30 @@ namespace BitTorrent
 
         private static void EncodeNextObject(MemoryStream buffer, object obj)
         {
-            if (obj is byte[])                
-                EncodeByteArray(buffer, (byte[])obj);
+            if (obj is byte[])
+            {
+                EncodeByteArray(buffer, (byte[]) obj);
+            }
             else if (obj is string)
-                EncodeString(buffer, (string)obj);
+            {
+                EncodeString(buffer, (string) obj);
+            }
             else if (obj is long)
-                EncodeNumber(buffer, (long)obj);
+            {
+                EncodeNumber(buffer, (long) obj);
+            }
             else if (obj.GetType() == typeof(List<object>))
-                EncodeList(buffer, (List<object>)obj);
-            else if (obj.GetType() == typeof(Dictionary<string,object>))
-                EncodeDictionary(buffer, (Dictionary<string,object>)obj);
+            {
+                EncodeList(buffer, (List<object>) obj);
+            }
+            else if (obj.GetType() == typeof(Dictionary<string, object>))
+            {
+                EncodeDictionary(buffer, (Dictionary<string, object>) obj);
+            }
             else
+            {
                 throw new Exception("unable to encode type " + obj.GetType());
+            }
         }
 
         private static void EncodeByteArray(MemoryStream buffer, byte[] body)
@@ -224,7 +236,7 @@ namespace BitTorrent
 
         public static string GetFormattedString(object obj, int depth = 0)
         {
-            string output = "";
+            var output = "";
             
             if (obj is byte[])
                 output += GetFormattedString((byte[])obj);
@@ -252,8 +264,8 @@ namespace BitTorrent
 
         private static string GetFormattedString(List<object> obj, int depth)
         {
-            string pad1 = new String(' ', depth * 2);
-            string pad2 = new String(' ', (depth+1) * 2);
+            var pad1 = new String(' ', depth * 2);
+            var pad2 = new String(' ', (depth+1) * 2);
 
             if (obj.Count < 1)
                 return "[]";
@@ -266,8 +278,8 @@ namespace BitTorrent
 
         private static string GetFormattedString(Dictionary<string,object> obj, int depth)
         {
-            string pad1 = new String(' ', depth * 2);
-            string pad2 = new String(' ', (depth+1) * 2);
+            var pad1 = new String(' ', depth * 2);
+            var pad2 = new String(' ', (depth+1) * 2);
 
             return (depth>0?"\n":"") + pad1 + "{" + String.Join("", obj.Select(x => "\n" + pad2 + (x.Key+":").PadRight(15,' ') + GetFormattedString(x.Value, depth+1))) + "\n" + pad1 + "}";
             //return String.Join("", obj.Select(x => "\n" + pad2 + (x.Key+":").PadRight(15,' ') + GetFormattedString(x.Value, depth+1)));

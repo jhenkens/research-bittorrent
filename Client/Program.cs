@@ -7,8 +7,8 @@ namespace Program
 {
     public static class Program
     {
-        private static Client client;
-        private static ManualResetEventSlim manualResetEventSlim = new ManualResetEventSlim();
+        private static Client Client;
+        private static readonly ManualResetEventSlim ManualResetEventSlim = new ManualResetEventSlim();
 
         public static void Main(string[] args)
         {
@@ -18,18 +18,18 @@ namespace Program
                 return;
             }
 
-            client = new Client(port, args[1], args[2]);
-            client.Start();
+            Client = new Client(port, args[1], args[2]);
+            Client.Start();
 
-            Console.CancelKeyPress += (x, y) => client.Stop();
+            Console.CancelKeyPress += (x, y) => Client.Stop();
 
-            manualResetEventSlim.Wait();
+            ManualResetEventSlim.Wait();
         }
 
         private static void Stop()
         {
-            client.Stop();
-            manualResetEventSlim.Set();
+            Client.Stop();
+            ManualResetEventSlim.Set();
         }
     }
 }

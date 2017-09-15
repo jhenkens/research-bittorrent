@@ -38,7 +38,7 @@ namespace BitTorrent
             { 
                 lock (itemLock)
                 {
-                    DateTime cutoff = DateTime.UtcNow.Add(-this.MaximumWindow);
+                    var cutoff = DateTime.UtcNow.Add(-this.MaximumWindow);
                     items.RemoveAll(x => x.Time < cutoff);
                     return items.Sum(x => x.Size) >= MaximumSize;
                 }
